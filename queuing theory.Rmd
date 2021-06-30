@@ -1,0 +1,350 @@
+---
+title: "Biostat 213 Midterm"
+author: "Xinyang Li, 605352032"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Assume that your business opens at 8am and closes at 5pm.  Customers arrive at a rate of 4/hr.  Between the hours of noon and 1 that rate increases to 6/hr.  Suppose you have 2 tellers. There are, in general, 3 types of queuing systems 1) 1 line with parallel servers.  2)  tandem service (In-N-out example) and 3) where each teller has their own line (grocery store).  
+
+## Easy one: all servers have same rate and only do type 1 & 2
+## (1) 1 line with parallel servers 
+```{r}
+# Simulating for one week (7 days)
+cust.wait <- numeric(7) # average customer waiting time for each day
+Time_past <- numeric(7) # time past closing for each day
+```
+
+```{r}
+for (i in 1:7) {
+  t <- 8      # opens at 8am
+  close_time <- 17    # closes at 5pm
+  A <- 0      # arrival time for each customer
+  D <- 0      # departure time for each customer
+  Na <- 0     # number of arrival
+  Nd <- 0     # number of departure
+  n <- 0      # number of customer in store at time t
+  Td1 <- Inf 
+  Td2 <- Inf 
+
+  lambda1 <- 4
+  lambda2 <- 6
+  u1 <- runif(1)
+  while(t < close_time) {
+    #Simulate first arrival
+    case <- 0
+    while (case == 0) {
+      u2 <-runif(1)
+      lt <- 1/ ((t - 4)^2 + .5)
+      if (t >= 12) {
+        lambda.t <- lt/lambda2
+        if (u2 <= lambda.t) { 
+          u1 <- runif(1)
+          T0 <- t  - 1/lambda2*log(u1)
+          Ta <- T0
+          case<- case + 1
+        }
+      } else {
+        lambda.t <- lt/lambda1
+        if (u2 <= lambda.t) { 
+          u1 <- runif(1)
+          T0 <- t  - 1/lambda1*log(u1)
+          Ta <- T0
+          case<- case + 1
+        }
+      }
+    }
+  
+    # Someone arrives
+    if (Ta <= Td1 & Ta <= close_time) {
+      t <- Ta				
+      Na <- Na + 1   
+      n <- n + 1			 
+      A[Na] <- t		
+    
+      case <- 0
+      while (case == 0) {
+        u2 <- runif(1)
+        lt <- 1/((t - 4)^2 + .5)
+        if (t >= 12) {
+          lambda.t <- lt/lambda2
+          if (u2 <= lambda.t) { 
+            u1 <- runif(1)
+            Tt <- t - 1/lambda2*log(u1)
+            Ta <- Tt
+            case <- case + 1
+          }
+        } else {
+          lambda.t <- lt/lambda1
+          if (u2 <= lambda.t) { 
+            u1 <- runif(1)
+            Tt <- t  - 1/lambda1*log(u1)
+            Ta <- Tt
+            case <- case + 1
+          }
+        }
+      }
+    
+      if (n == 1)	{ #if the new customer is the only one 
+        L <- rgamma(1,1,10)  
+        Td1 <- t + L        
+      }
+    
+      if (n == 2) { #if the new customer is the second customer in store at the time
+        L <- rgamma(1,1,10)  
+        Td2 <- t + L       
+      }
+    }
+    
+    # Someone leaves when bank is open
+    if (Td1 < Ta & Td1 <= close_time) {
+      t <- Td1		
+      n <- n - 1		
+      Nd <- Nd + 1 
+      D[Nd] <- t    
+    
+      if (n == 0) { #if that was the only customer that left (bank is empty) 
+        Td1 <- Inf 
+        Td2 <- Inf
+      }
+    
+      if (n == 1)	{	#if there is one customer left
+        Td1 <- Td2
+        Td2 <- Inf
+      }
+    
+      if (n >= 2) { #if there is more than one left
+        Td1 <- Td2
+        L <-  rgamma(1,1,10)
+        Td2 <- t + L
+      }
+    }
+  
+  
+    # Bank is closed but people still in the bank
+    if (min(Ta,Td1) > close_time & n > 0) {
+      while (n > 0) {
+        t <- Td1
+        n <- n - 1
+        Nd <- Nd + 1
+        D[Nd] <- t
+      
+        if (n > 1) {
+          L <- rgamma(1,1,10)
+          Td1 <- Td2
+          Td2 <- t + L
+        }
+      
+        if (n == 1) {
+          L <- rgamma(1,1,10)
+          Td1 <- t + L
+          Td2 <- Inf
+        }
+      }
+    }
+  
+  
+    # Bank is closed and no one in bank
+    if (min(Ta,Td1) > close_time & n==0) {
+      Tp <- max(t-close_time,0)
+    }
+  }
+  cust.wait[i] <- sum(D-A) / Na		
+  Time_past[i] <- Tp	
+  i <- i + 1
+}
+
+```
+
+```{r}
+# output
+A
+D
+Time_past
+cust.wait
+```
+
+## (2) tandem service (In-N-out example)
+
+```{r}
+# Simulating for one week (7 days)
+cust.wait <- numeric(7) # average customer waiting time for each day
+Time_past <- numeric(7) # time past closing for each day
+```
+
+```{r}
+cust.wait <- numeric(7) # average customer waiting time for each day
+Time_past <- numeric(7) # time past closing for each day
+Tp <- 0
+
+# Simulation for one week (7 days)
+for (i in 1:7) {
+  # initialization
+  t <- 8
+  close_time <- 17
+  n1 <- 0 # number of customers at server 1 at time t
+  n2 <- 0 # number of customers at server 2 at time t
+  Na <- 0
+  Nd <- 0
+  A1 <- 0
+  A2 <- 0
+  D <- 0
+  lambda1 <- 4
+  lambda2 <- 6
+  u1 <- runif(1)
+  T1 <- Inf # service completion time of customer currently being helped by server 1
+  T2 <- Inf # service completion time of customer currently being helped by server 2
+  
+  while (t < close_time) {
+    #case 0: Simulate first arrival
+
+    case <- 0
+    while (case == 0) {
+      u2 <-runif(1)
+      lt <- 1/ ((t - 4)^2 + .5)
+      if (t >= 12) { # customer rate becomes 6/hr after noon
+        lambda.t <- lt/lambda2
+        if (u2 <= lambda.t) { 
+          u1 <- runif(1)
+          T0 <- t  - 1/lambda2*log(u1)
+          Ta <- T0
+          case<- case + 1
+        }
+      } else { # customer rate is 4/hr before noon
+        lambda.t <- lt/lambda1
+        if (u2 <= lambda.t) { 
+          u1 <- runif(1)
+          T0 <- t  - 1/lambda1*log(u1)
+          Ta <- T0
+          case<- case + 1
+        }
+      }
+    }
+    
+    # case 1: new customer arrives before somebody departs server 1 and server 2
+    if (Ta == min(Ta, T1, T2) & Ta < close_time) {
+      t <- Ta
+      Na <- Na + 1
+      n1 <- n1 + 1
+      A1[Na] <- t
+      
+      case <- 0
+      while (case == 0) {
+        u2 <- runif(1)
+        lt <- 1/((t - 4)^2 + .5)
+        if (t >= 12) {
+          lambda.t <- lt/lambda2
+          if (u2 <= lambda.t) { 
+            u1 <- runif(1)
+            Tt <- t - 1/lambda2*log(u1)
+            Ta <- Tt
+            case <- case + 1
+          }
+        } else {
+          lambda.t <- lt/lambda1
+          if (u2 <= lambda.t) { 
+            u1 <- runif(1)
+            Tt <- t  - 1/lambda1*log(u1)
+            Ta <- Tt
+            case <- case + 1
+          }
+        }
+      }
+      
+      if (n1 == 1) {
+        Y1 <- rgamma(1,1,10)  
+        T1 <- t + Y1 
+      }
+    }
+    
+    # case 2: a customer finishes at server 1 and goes to server 2
+    # leaves server 1 before leaves server 2
+    if (T1 < Ta & T1 <= T2 & T1 < close_time) {
+      t <- T1
+      n1 <- n1 - 1
+      n2 <- n2 + 1
+      A2[Na-n1] <- t
+      
+      if (n1 == 0) {
+        T1 <- Inf
+      } else {
+        Y1 <- rgamma(1,1,10)
+        T1 <- t + Y1
+      }
+      
+      if (n2 == 1) {
+        Y2 <- rgamma(1,1,10)
+        T2 <- t + Y2
+      }
+    }
+    
+    # case 3: a customer finishes at server 2 and departs
+    if (T2 < Ta & T2 < T1 & T2 < close_time) {
+      t <- T2
+      Nd <- Nd + 1
+      n2 <- n2 - 1
+      D[Nd] <- t
+      
+      if (n2 == 0) {
+        T2 <- Inf
+      } else {
+        Y2 <- rgamma(1,1,10)
+        T2 <- t + Y2
+      }
+      
+    }
+    
+    if (min(Ta, T1, T2) > close_time & (n1 > 0 | n2 > 0)) {
+      while (n1 > 0) {
+        t <- T1
+        n1 <- n1 - 1
+        n2 <- n2 + 1
+        
+        if (n1 > 0) {
+          Y1 <- rgamma(1,1,10)
+          T1 <- t + Y1
+        }
+        
+        if (n2 == 1) {
+          Y2 <- rgamma(1,1,10)
+          T2 <- t + Y2
+        }
+      }
+      
+      while (n2 > 0) {
+        t <- T2
+        n2 <- n2 - 1
+        Nd <- Nd + 1
+        D[Nd] <- t
+        
+        if (n2 > 0) {
+          Y2 <- rgamma(1,1,10)
+          T2 <- t + Y2
+        }
+      }
+    }
+    
+    if (min(Ta, T1, T2) > close_time & n1 == 0 & n2 == 0) {
+      Tp <- max(t-close_time, 0)
+    }
+  } # end while loop
+  
+  cust.wait[i] <- sum(D-A1) / Na		
+  Time_past[i] <- Tp	
+  i <- i + 1
+}
+```
+
+```{r}
+A1
+A2
+D
+Time_past
+cust.wait
+```
+
+It seems like the average waiting time for customers of type 1 (one line with parallel servers) is less than that for customers of type 2 (tandem service).
